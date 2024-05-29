@@ -2,10 +2,39 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-# URL de base du site web
+# URLs de base du site web
 base_url = "https://quotes.toscrape.com/page/{}/"
 login_url = "https://quotes.toscrape.com/login"
 tag_url = "https://quotes.toscrape.com/tag/books/page/{}/"
+
+# Fonction pour extraire les citations d'une page
+def extract_quotes_from_page(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    quotes = soup.find_all('div', class_='quote')
+    
+    quote_data = []
+    for quote in quotes:
+        text = quote.find('span', class_='text').get_text()
+        tags = [tag.get_text() for tag in quote.find_all('a', class_='tag')]
+        quote_data.append({'text': text, 'tags': tags})
+    return quote_data
+
+# Récupérer les 5 premières pages de citations et filtrer par les 4 premiers tags
+relevant_tags = ['love', 'inspirational', 'life', 'humor']
+all_quotes = []
+
+for page in range(1, 6):
+    url = base_url.format(page)
+    all_quotes.extend(extract_quotes_from_page(url))
+
+filtered_quotes = [quote for quote in all_quotes if any(tag in relevant_tags for tag in quote['tags'])]
+
+# Écrire les résultats dans un fichier CSV
+df = pd.DataFrame(filtered_quotes)
+df.to_csv('results.csv', index=False, encoding='utf-8')
+
+print("Première partie terminée. Les résultats ont été sauvegardés dans 'results.csv'.")
 
 # Fonction pour se connecter et obtenir le token
 def login_and_get_token():
@@ -22,20 +51,6 @@ def login_and_get_token():
     login_response = session.post(login_url, data=login_data)
     return session, token
 
-# Fonction pour extraire les citations d'une page
-def extract_quotes_from_page(session, url):
-    response = session.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    quotes = soup.find_all('div', class_='quote')
-    
-    quote_data = []
-    for quote in quotes:
-        text = quote.find('span', class_='text').get_text()
-        author = quote.find('small', class_='author').get_text()
-        tags = [tag.get_text() for tag in quote.find_all('a', class_='tag')]
-        quote_data.append({'text': text, 'author': author, 'tags': tags})
-    return quote_data
-
 # Se connecter et obtenir le token
 session, token = login_and_get_token()
 
@@ -47,7 +62,7 @@ with open('results.csv', 'a', encoding='utf-8') as file:
 book_quotes = []
 for page in range(1, 3):
     url = tag_url.format(page)
-    book_quotes.extend(extract_quotes_from_page(session, url))
+    book_quotes.extend(extract_quotes_from_page(url))
 
 # Charger les citations existantes dans results.csv pour éviter les doublons
 existing_quotes = pd.read_csv('results.csv')
@@ -61,4 +76,4 @@ merged_df = pd.concat([existing_quotes, book_quotes_df]).drop_duplicates(subset=
 # Écrire les résultats dans un fichier CSV
 merged_df.to_csv('results.csv', index=False, encoding='utf-8')
 
-print("Scraping et mise à jour du fichier CSV terminés.")
+print("Deuxième partie terminée. Les résultats ont été sauvegardés dans 'results.csv'.")
