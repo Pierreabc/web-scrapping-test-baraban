@@ -36,33 +36,56 @@ df.to_csv('results.csv', index=False, encoding='utf-8')
 
 print("Première partie terminée. Les résultats ont été sauvegardés dans 'results.csv'.")
 
-# Fonction pour se connecter et obtenir le token
-def login_and_get_token():
+# Fonction pour se connecter et obtenir le cookie de session
+def login_and_get_cookie():
     session = requests.Session()
+    # Récupérer la page de login pour obtenir le token CSRF initial
     response = session.get(login_url)
     soup = BeautifulSoup(response.text, 'html.parser')
-    token = soup.find('input', {'name': 'csrf_token'})['value']
+    initial_token = soup.find('input', {'name': 'csrf_token'})['value']
     
+    # Utiliser le token initial pour se connecter
     login_data = {
-        'csrf_token': token,
+        'csrf_token': initial_token,
         'username': 'test',
         'password': 'test'
     }
     login_response = session.post(login_url, data=login_data)
-    return session, token
+    
+    # Vérifier si la connexion est réussie en cherchant le bouton de déconnexion
+    if "Logout" not in login_response.text:
+        raise Exception("Login failed")
 
-# Se connecter et obtenir le token
-session, token = login_and_get_token()
+    # Récupérer le cookie de session après connexion réussie
+    cookie = session.cookies.get_dict()
+    
+    return session, cookie
 
-# Inscrire le token dans results.csv
+# Fonction pour extraire les citations d'une page avec un tag spécifique
+def extract_quotes_from_tag_page(session, page_number):
+    url = tag_url.format(page_number)
+    response = session.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    quotes = soup.find_all('div', class_='quote')
+    
+    quote_data = []
+    for quote in quotes:
+        text = quote.find('span', class_='text').get_text()
+        tags = [tag.get_text() for tag in quote.find_all('a', class_='tag')]
+        quote_data.append({'text': text, 'tags': tags})
+    return quote_data
+
+# Se connecter et obtenir le cookie après login
+session, cookies = login_and_get_cookie()
+
+# Inscrire le cookie dans results.csv
 with open('results.csv', 'a', encoding='utf-8') as file:
-    file.write(f'Token,{token}\n')
+    file.write(f'Cookies,{cookies}\n')
 
 # Extraire les citations des 2 premières pages avec le tag 'books'
 book_quotes = []
 for page in range(1, 3):
-    url = tag_url.format(page)
-    book_quotes.extend(extract_quotes_from_page(url))
+    book_quotes.extend(extract_quotes_from_tag_page(session, page))
 
 # Charger les citations existantes dans results.csv pour éviter les doublons
 existing_quotes = pd.read_csv('results.csv')
